@@ -67,13 +67,18 @@ pub struct Cli {
           value_parser = clap::value_parser!(u16).range(60..))]
     pub content_height: u16,
 
-    /// Add an extra item that drags all files at once
-    #[arg(short = 'a', long, conflicts_with = "all_compact")]
+    /// Show the "drag all" row even for a single file. With more than one
+    /// file it is shown by default
+    #[arg(short = 'a', long, conflicts_with_all = ["all_compact", "no_all"])]
     pub all: bool,
 
-    /// Show a single item that drags all files at once
-    #[arg(short = 'A', long)]
+    /// Show only a single row that drags all files at once
+    #[arg(short = 'A', long, conflicts_with = "no_all")]
     pub all_compact: bool,
+
+    /// Never show the "drag all" row
+    #[arg(long)]
+    pub no_all: bool,
 
     /// Read additional paths from stdin, one per line
     #[arg(short = 'I', long)]
@@ -128,8 +133,11 @@ mod tests {
     }
 
     #[test]
-    fn all_conflicts_with_all_compact() {
+    fn drag_all_flags_conflict() {
         assert!(parse(&["-a", "-A", "f"]).is_err());
+        assert!(parse(&["-a", "--no-all", "f"]).is_err());
+        assert!(parse(&["-A", "--no-all", "f"]).is_err());
+        assert!(parse(&["--no-all", "f"]).unwrap().no_all);
     }
 
     #[test]

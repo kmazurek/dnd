@@ -18,14 +18,18 @@ the platform's native toolkit instead of GTK.
 ## Usage
 
 ```sh
-dnd FILE...                 # drag files out of the window
+dnd FILE...                 # drag files out, one by one or all at once
 dnd -x *.png                # ...and quit after the first successful drag
-dnd -a -b ~/Downloads/*     # extra "All N files" row, show only file names
+dnd -A -x ~/Downloads/*.pdf # a single row that drags every file
 fd -e pdf | dnd -I          # read paths from stdin
 dnd -t                      # drop target: print dropped paths to stdout
 dnd -t -x | xargs -I{} cp {} .   # copy one dropped file here
 dnd -t -k                   # drop target that keeps drops as draggable rows
 ```
+
+With more than one file, the top row ("All N files") drags every file in a
+single drag; the rows below drag them individually. In `-t -k` mode the row
+appears as soon as two files have been dropped.
 
 Click a row to open the file in its default application (`-n` disables this).
 Close the window with Escape, ⌘W or ⌘Q.
@@ -38,8 +42,9 @@ same volume copies the file instead of moving it away.
 | `-t`, `--target` | Act as a drop target and print dropped paths |
 | `-k`, `--keep` | With `-t`, keep dropped files as draggable rows |
 | `-x`, `--and-exit` | Exit after the first successful drag or drop |
-| `-a`, `--all` | Add a row that drags all files at once |
+| `-a`, `--all` | Show the "drag all" row even for a single file |
 | `-A`, `--all-compact` | Show only the "drag all" row |
+| `--no-all` | Never show the "drag all" row |
 | `-I`, `--from-stdin` | Read additional paths from stdin, one per line |
 | `-b`, `--basename` | Show file names instead of full paths |
 | `-i`, `--icons-only` | Hide the labels |

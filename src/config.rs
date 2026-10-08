@@ -20,15 +20,55 @@ pub enum Mode {
     },
 }
 
-/// How the "drag everything at once" item is presented.
+/// When the "drag everything at once" row is shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragAll {
-    /// Only individual items.
-    Off,
-    /// An extra item above the individual ones.
-    Extra,
-    /// A single item replacing the individual ones.
+    /// Above the individual rows whenever there is more than one file.
+    Auto,
+    /// Above the individual rows, even for a single file (`--all`).
+    Always,
+    /// Instead of the individual rows (`--all-compact`).
     Compact,
+    /// Never (`--no-all`).
+    Never,
+}
+
+/// Which rows to show for a given number of files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rows {
+    pub all: bool,
+    pub individual: bool,
+}
+
+impl DragAll {
+    /// Decides the rows for `count` files. Kept drops change the count at
+    /// runtime, so backends call this again whenever the list changes.
+    pub fn rows(self, count: usize) -> Rows {
+        if count == 0 {
+            return Rows {
+                all: false,
+                individual: false,
+            };
+        }
+        match self {
+            DragAll::Auto => Rows {
+                all: count > 1,
+                individual: true,
+            },
+            DragAll::Always => Rows {
+                all: true,
+                individual: true,
+            },
+            DragAll::Compact => Rows {
+                all: true,
+                individual: false,
+            },
+            DragAll::Never => Rows {
+                all: false,
+                individual: true,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,10 +113,14 @@ impl Options {
             _ => {}
         }
 
-        let drag_all = match (cli.all, cli.all_compact) {
-            (_, true) => DragAll::Compact,
-            (true, false) => DragAll::Extra,
-            (false, false) => DragAll::Off,
+        let drag_all = if cli.all_compact {
+            DragAll::Compact
+        } else if cli.all {
+            DragAll::Always
+        } else if cli.no_all {
+            DragAll::Never
+        } else {
+            DragAll::Auto
         };
 
         Ok(Self {
@@ -153,15 +197,32 @@ mod tests {
     #[test]
     fn drag_all_variants() {
         let (_dir, root) = fixture();
-        assert_eq!(options(&["a"], "", &root).unwrap().drag_all, DragAll::Off);
-        assert_eq!(
-            options(&["-a", "a"], "", &root).unwrap().drag_all,
-            DragAll::Extra
-        );
-        assert_eq!(
-            options(&["-A", "a"], "", &root).unwrap().drag_all,
-            DragAll::Compact
-        );
+        let drag_all = |args: &[&str]| options(args, "", &root).unwrap().drag_all;
+        assert_eq!(drag_all(&["a"]), DragAll::Auto);
+        assert_eq!(drag_all(&["-a", "a"]), DragAll::Always);
+        assert_eq!(drag_all(&["-A", "a"]), DragAll::Compact);
+        assert_eq!(drag_all(&["--no-all", "a"]), DragAll::Never);
+    }
+
+    #[test]
+    fn drag_all_rows_by_count() {
+        let rows = |all, individual| Rows { all, individual };
+        let none = rows(false, false);
+        for mode in [
+            DragAll::Auto,
+            DragAll::Always,
+            DragAll::Compact,
+            DragAll::Never,
+        ] {
+            assert_eq!(mode.rows(0), none, "{mode:?}");
+        }
+        // The default only adds the "all" row once it drags more than one row would.
+        assert_eq!(DragAll::Auto.rows(1), rows(false, true));
+        assert_eq!(DragAll::Auto.rows(2), rows(true, true));
+        assert_eq!(DragAll::Always.rows(1), rows(true, true));
+        assert_eq!(DragAll::Compact.rows(1), rows(true, false));
+        assert_eq!(DragAll::Compact.rows(5), rows(true, false));
+        assert_eq!(DragAll::Never.rows(5), rows(false, true));
     }
 
     #[test]

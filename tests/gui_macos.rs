@@ -73,6 +73,7 @@ fn source_window_variants_render() {
     for args in [
         &["-a", "-b", "Cargo.toml", "src"][..],
         &["-A", "Cargo.toml", "src"],
+        &["--no-all", "Cargo.toml", "src"],
         &["-i", "-s", "64", "Cargo.toml"],
         &["-d", "-n", "-r", "Cargo.toml"],
     ] {

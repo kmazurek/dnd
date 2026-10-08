@@ -30,7 +30,7 @@ use objc2_foundation::{
     NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, ns_string,
 };
 
-use crate::config::{DragAll, Mode, Options};
+use crate::config::{Mode, Options};
 use crate::items::{self, Item};
 use crate::output;
 use crate::uri;
@@ -160,22 +160,18 @@ fn build_window(mtm: MainThreadMarker, options: &Rc<Options>) -> Retained<NSWind
     };
     window.setContentView(Some(&content));
 
-    add_items(mtm, &list, &options.items, options, options.drag_all);
+    show_items(mtm, &list, &options.items, options);
     window
 }
 
-/// Adds rows for `items` to `list`.
-fn add_items(
-    mtm: MainThreadMarker,
-    list: &NSStackView,
-    items: &[Item],
-    options: &Rc<Options>,
-    drag_all: DragAll,
-) {
-    if items.is_empty() {
-        return;
+/// Replaces the rows in `list` with rows for `items`: a "drag all" row
+/// and/or one row per file, as decided by [`crate::config::DragAll::rows`].
+fn show_items(mtm: MainThreadMarker, list: &NSStackView, items: &[Item], options: &Rc<Options>) {
+    for row in list.arrangedSubviews().iter() {
+        row.removeFromSuperview();
     }
-    if drag_all != DragAll::Off {
+    let rows = options.drag_all.rows(items.len());
+    if rows.all {
         let paths = items.iter().map(|i| i.path.clone()).collect();
         let label = match items.len() {
             1 => "1 file".to_owned(),
@@ -183,7 +179,7 @@ fn add_items(
         };
         add_row(list, ItemView::new(mtm, paths, &label, options.clone()));
     }
-    if drag_all != DragAll::Compact {
+    if rows.individual {
         for item in items {
             let row = ItemView::new(mtm, vec![item.path.clone()], &item.label, options.clone());
             add_row(list, row);
@@ -622,8 +618,8 @@ struct DropIvars {
     /// The list kept dropped files are appended to (only with `--keep`).
     list: OnceCell<Retained<NSStackView>>,
     highlighted: Cell<bool>,
-    /// Paths already shown in the list, so repeated drops do not duplicate.
-    kept: RefCell<Vec<PathBuf>>,
+    /// Files shown in the list: the initial ones plus every distinct drop.
+    kept: RefCell<Vec<Item>>,
 }
 
 define_class!(
@@ -686,7 +682,7 @@ define_class!(
 
 impl DropView {
     fn new(mtm: MainThreadMarker, frame: NSRect, options: Rc<Options>) -> Retained<Self> {
-        let kept = options.items.iter().map(|i| i.path.clone()).collect();
+        let kept = options.items.clone();
         let this = Self::alloc(mtm).set_ivars(DropIvars {
             options,
             list: OnceCell::new(),
@@ -708,15 +704,14 @@ impl DropView {
 
         if let Some(list) = ivars.list.get() {
             let mut kept = ivars.kept.borrow_mut();
-            let new: Vec<Item> = paths
-                .into_iter()
-                .filter(|p| !kept.contains(p))
-                .map(|p| Item::new(p, ivars.options.basename))
-                .collect();
-            kept.extend(new.iter().map(|i| i.path.clone()));
-            // "Drag all" rows are only built for the initial items; dropped
-            // files are always added individually.
-            add_items(self.mtm(), list, &new, &ivars.options, DragAll::Off);
+            for path in paths {
+                if !kept.iter().any(|item| item.path == path) {
+                    kept.push(Item::new(path, ivars.options.basename));
+                }
+            }
+            // Rebuild rather than append, so the "drag all" row appears once
+            // there is more than one file and always covers all of them.
+            show_items(self.mtm(), list, &kept, &ivars.options);
         }
 
         if ivars.options.and_exit {

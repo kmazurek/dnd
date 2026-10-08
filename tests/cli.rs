@@ -27,6 +27,7 @@ fn help_lists_ripdrag_compatible_flags() {
         "--content-height",
         "--all",
         "--all-compact",
+        "--no-all",
         "--from-stdin",
         "--no-click",
         "--verbose",
