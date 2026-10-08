@@ -19,6 +19,7 @@ clap = { version = "4.6", features = ["derive"] }
 objc2 = "0.6.5"
 objc2-foundation = { version = "0.3.2", features = [
     "NSArray",
+    "NSData",
     "NSDictionary",
     "NSGeometry",
     "NSNotification",
@@ -29,6 +30,9 @@ objc2-foundation = { version = "0.3.2", features = [
 ] }
 objc2-app-kit = { version = "0.3.2", features = [
     "NSApplication",
+    "NSBezierPath",
+    "NSBitmapImageRep",
+    "NSClipView",
     "NSButton",
     "NSColor",
     "NSControl",
@@ -39,10 +43,13 @@ objc2-app-kit = { version = "0.3.2", features = [
     "NSFont",
     "NSGraphics",
     "NSImage",
+    "NSImageRep",
     "NSImageView",
+    "NSLayoutAnchor",
     "NSLayoutConstraint",
     "NSMenu",
     "NSMenuItem",
+    "NSParagraphStyle",
     "NSPasteboard",
     "NSResponder",
     "NSRunningApplication",

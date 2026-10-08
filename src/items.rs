@@ -33,6 +33,22 @@ pub fn label_for(path: &Path, basename: bool) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Whether `path` looks like an image a thumbnail can be rendered for,
+/// judging by its extension.
+pub fn is_image(path: &Path) -> bool {
+    const EXTENSIONS: &[&str] = &[
+        "bmp", "gif", "heic", "heif", "icns", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff",
+        "webp",
+    ];
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            EXTENSIONS
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(ext))
+        })
+}
+
 /// Reads one path per line, skipping blank lines and trailing `\r`.
 ///
 /// Lines are not otherwise trimmed because file names may legitimately start
@@ -87,6 +103,15 @@ mod tests {
         assert_eq!(label_for(p, false), "/tmp/some dir/file.txt");
         assert_eq!(label_for(p, true), "file.txt");
         assert_eq!(label_for(Path::new("/"), true), "/");
+    }
+
+    #[test]
+    fn image_detection_by_extension() {
+        assert!(is_image(Path::new("a.png")));
+        assert!(is_image(Path::new("/x/Photo.JPEG")));
+        assert!(!is_image(Path::new("notes.txt")));
+        assert!(!is_image(Path::new("png")));
+        assert!(!is_image(Path::new("/dir/")));
     }
 
     #[test]
