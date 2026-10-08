@@ -31,7 +31,6 @@ With more than one file, the top row ("All N files") drags every file in a
 single drag; the rows below drag them individually. In `-t -k` mode the row
 appears as soon as two files have been dropped.
 
-Click a row to open the file in its default application (`-n` disables this).
 Close the window with Escape, ⌘W or ⌘Q.
 
 Drags offer *copy* and *link* but never *move*, so dropping onto Finder on the
@@ -53,7 +52,6 @@ same volume copies the file instead of moving it away.
 | `-W`, `--content-width N` | Window content width (default 360) |
 | `-H`, `--content-height N` | Window content height (default 360) |
 | `-r`, `--resizable` | Make the window resizable |
-| `-n`, `--no-click` | Do not open files on click |
 | `-v`, `--verbose` | Print diagnostics to stderr |
 
 ## Building

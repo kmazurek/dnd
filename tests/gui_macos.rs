@@ -75,7 +75,7 @@ fn source_window_variants_render() {
         &["-A", "Cargo.toml", "src"],
         &["--no-all", "Cargo.toml", "src"],
         &["-i", "-s", "64", "Cargo.toml"],
-        &["-d", "-n", "-r", "Cargo.toml"],
+        &["-d", "-r", "Cargo.toml"],
     ] {
         assert_window_size(snapshot(args), 360, 360);
     }

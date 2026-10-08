@@ -85,7 +85,6 @@ pub struct Options {
     pub width: f64,
     pub height: f64,
     pub drag_all: DragAll,
-    pub click_to_open: bool,
 }
 
 impl Options {
@@ -136,7 +135,6 @@ impl Options {
             width: f64::from(cli.content_width),
             height: f64::from(cli.content_height),
             drag_all,
-            click_to_open: !cli.no_click,
         })
     }
 }
@@ -226,11 +224,9 @@ mod tests {
     }
 
     #[test]
-    fn inverted_flags() {
+    fn thumbnails_flag_is_inverted() {
         let (_dir, root) = fixture();
-        let opts = options(&["a"], "", &root).unwrap();
-        assert!(opts.thumbnails && opts.click_to_open);
-        let opts = options(&["-d", "-n", "a"], "", &root).unwrap();
-        assert!(!opts.thumbnails && !opts.click_to_open);
+        assert!(options(&["a"], "", &root).unwrap().thumbnails);
+        assert!(!options(&["-d", "a"], "", &root).unwrap().thumbnails);
     }
 }

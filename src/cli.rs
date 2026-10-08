@@ -83,10 +83,6 @@ pub struct Cli {
     /// Read additional paths from stdin, one per line
     #[arg(short = 'I', long)]
     pub from_stdin: bool,
-
-    /// Do not open files when their item is clicked
-    #[arg(short = 'n', long)]
-    pub no_click: bool,
 }
 
 #[cfg(test)]
@@ -115,12 +111,12 @@ mod tests {
     #[test]
     fn short_flags_match_ripdrag() {
         let cli = parse(&[
-            "-v", "-x", "-i", "-d", "-b", "-r", "-a", "-I", "-n", "-s", "64", "-W", "200", "-H",
-            "100", "f",
+            "-v", "-x", "-i", "-d", "-b", "-r", "-a", "-I", "-s", "64", "-W", "200", "-H", "100",
+            "f",
         ])
         .unwrap();
         assert!(cli.verbose && cli.and_exit && cli.icons_only && cli.disable_thumbnails);
-        assert!(cli.basename && cli.resizable && cli.all && cli.from_stdin && cli.no_click);
+        assert!(cli.basename && cli.resizable && cli.all && cli.from_stdin);
         assert_eq!(cli.icon_size, 64);
         assert_eq!((cli.content_width, cli.content_height), (200, 100));
     }

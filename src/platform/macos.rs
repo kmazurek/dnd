@@ -401,7 +401,7 @@ struct ItemIvars {
     options: Rc<Options>,
     /// Set between mouse down and mouse up; drawn as a highlight.
     pressed: Cell<bool>,
-    /// Whether the current mouse down already turned into a drag.
+    /// Whether the current mouse down already started a drag session.
     dragging: Cell<bool>,
 }
 
@@ -449,15 +449,6 @@ define_class!(
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, _event: &NSEvent) {
             self.set_pressed(false);
-            let ivars = self.ivars();
-            // Only single files open on click; opening every file behind a
-            // "drag all" row at once would rarely be what the user wanted.
-            if !ivars.dragging.get()
-                && ivars.options.click_to_open
-                && let [path] = ivars.paths.as_slice()
-            {
-                NSWorkspace::sharedWorkspace().openURL(&file_url(path));
-            }
         }
 
         #[unsafe(method(drawRect:))]

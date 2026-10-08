@@ -29,7 +29,6 @@ fn help_lists_ripdrag_compatible_flags() {
         "--all-compact",
         "--no-all",
         "--from-stdin",
-        "--no-click",
         "--verbose",
     ] {
         assert!(out.contains(flag), "missing {flag} in help:\n{out}");
