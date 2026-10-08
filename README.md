@@ -1,4 +1,6 @@
-# dnd
+# dnd - drag n drop
+
+A vibe-coded CLI utility for drag and drop.
 
 Drag and drop files from and to the terminal. `dnd` opens a small native
 window listing files that can be dragged into any application, or acting as a
