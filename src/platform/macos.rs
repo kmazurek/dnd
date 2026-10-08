@@ -20,10 +20,10 @@ use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
     NSBezierPath, NSBitmapImageFileType, NSColor, NSDragOperation, NSDraggingContext,
     NSDraggingDestination, NSDraggingInfo, NSDraggingItem, NSDraggingSession, NSDraggingSource,
-    NSEvent, NSImage, NSImageScaling, NSImageView, NSLayoutAttribute, NSLayoutConstraint,
-    NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboard,
-    NSPasteboardTypeFileURL, NSScrollView, NSStackView, NSTextField, NSView, NSWindow,
-    NSWindowStyleMask, NSWorkspace,
+    NSEvent, NSEventModifierFlags, NSImage, NSImageScaling, NSImageView, NSLayoutAttribute,
+    NSLayoutConstraint, NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem,
+    NSPasteboard, NSPasteboardTypeFileURL, NSScrollView, NSStackView, NSTextField, NSView,
+    NSWindow, NSWindowStyleMask, NSWorkspace,
 };
 use objc2_foundation::{
     MainThreadMarker, NSArray, NSDictionary, NSEdgeInsets, NSNotification, NSObject,
@@ -255,27 +255,28 @@ fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let app_item = NSMenuItem::new(mtm);
     let app_menu = NSMenu::new(mtm);
     // SAFETY: the selectors are valid actions for the first responder chain.
-    unsafe {
+    let escape = unsafe {
         app_menu.addItemWithTitle_action_keyEquivalent(
             ns_string!("Close Window"),
             Some(sel!(performClose:)),
             ns_string!("w"),
         );
         app_menu.addItemWithTitle_action_keyEquivalent(
-            ns_string!("Close Window"),
-            Some(sel!(performClose:)),
-            ns_string!("\u{1b}"),
-        );
-        app_menu.addItemWithTitle_action_keyEquivalent(
             ns_string!("Quit dnd"),
             Some(sel!(terminate:)),
             ns_string!("q"),
         );
-    }
-    // The Escape variant only exists for its key equivalent.
-    if let Some(item) = app_menu.itemAtIndex(1) {
-        item.setHidden(true);
-    }
+        app_menu.addItemWithTitle_action_keyEquivalent(
+            ns_string!("Close Window"),
+            Some(sel!(performClose:)),
+            ns_string!("\u{1b}"),
+        )
+    };
+    // A hidden duplicate whose only purpose is closing the window with a bare
+    // Escape (key equivalents default to requiring Command).
+    escape.setKeyEquivalentModifierMask(NSEventModifierFlags::empty());
+    escape.setHidden(true);
+    escape.setAllowsKeyEquivalentWhenHidden(true);
     app_item.setSubmenu(Some(&app_menu));
     menu.addItem(&app_item);
     menu
