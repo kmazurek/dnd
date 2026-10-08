@@ -8,7 +8,7 @@ LINUX_TARGET ?= x86_64-unknown-linux-gnu
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup build release run test fmt fmt-check lint ra check check-linux ci install uninstall clean
+.PHONY: help setup build release run test test-headless fmt fmt-check lint ra check check-linux ci install uninstall clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,8 +27,11 @@ release: ## Build an optimized binary
 run: ## Run with ARGS, e.g. make run ARGS="-x Cargo.toml"
 	$(CARGO) run -- $(ARGS)
 
-test: ## Run unit and integration tests
+test: ## Run unit, integration and GUI smoke tests
 	$(CARGO) test
+
+test-headless: ## Run tests that do not need a GUI session (e.g. over SSH)
+	DND_SKIP_GUI_TESTS=1 $(CARGO) test
 
 fmt: ## Format the code with rustfmt
 	$(CARGO) fmt --all
@@ -39,8 +42,12 @@ fmt-check: ## Verify formatting without changing files
 lint: ## Run clippy with warnings treated as errors
 	$(CARGO) clippy --all-targets -- -D warnings
 
+# rust-analyzer always reports `#[cfg]`-disabled code as WeakWarning hints;
+# only real warnings and errors fail the target.
 ra: ## Run rust-analyzer diagnostics over the project
-	rust-analyzer diagnostics .
+	@out="$$(rust-analyzer diagnostics . 2>&1)"; \
+	echo "$$out" | grep -v WeakWarning; \
+	! echo "$$out" | grep -qE ': (Error|Warning) '
 
 check: ## Type-check the crate for the host platform
 	$(CARGO) check --all-targets
