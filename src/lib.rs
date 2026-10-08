@@ -8,3 +8,4 @@ pub mod config;
 pub mod items;
 pub mod output;
 pub mod platform;
+pub mod uri;

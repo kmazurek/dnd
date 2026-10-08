@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
+percent-encoding = "2.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
@@ -51,6 +52,7 @@ objc2-app-kit = { version = "0.3.2", features = [
     "NSMenuItem",
     "NSParagraphStyle",
     "NSPasteboard",
+    "NSPasteboardItem",
     "NSResponder",
     "NSRunningApplication",
     "NSScrollView",

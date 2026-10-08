@@ -6,32 +6,34 @@
 //! content view is a [`DropView`] registered for file URLs.
 
 use std::cell::{Cell, OnceCell, RefCell};
+use std::ffi::CString;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{
-    AnyThread, ClassType, DefinedClass, MainThreadOnly, Message, define_class, msg_send, sel,
-};
+use objc2::runtime::ProtocolObject;
+use objc2::{AnyThread, DefinedClass, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
     NSBezierPath, NSBitmapImageFileType, NSColor, NSDragOperation, NSDraggingContext,
     NSDraggingDestination, NSDraggingInfo, NSDraggingItem, NSDraggingSession, NSDraggingSource,
     NSEvent, NSImage, NSImageScaling, NSImageView, NSLayoutAttribute, NSLayoutConstraint,
-    NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboardTypeFileURL,
-    NSPasteboardURLReadingFileURLsOnlyKey, NSScrollView, NSStackView, NSTextField, NSView,
-    NSWindow, NSWindowStyleMask, NSWorkspace,
+    NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboard,
+    NSPasteboardTypeFileURL, NSScrollView, NSStackView, NSTextField, NSView, NSWindow,
+    NSWindowStyleMask, NSWorkspace,
 };
 use objc2_foundation::{
-    MainThreadMarker, NSArray, NSDictionary, NSEdgeInsets, NSNotification, NSNumber, NSObject,
+    MainThreadMarker, NSArray, NSDictionary, NSEdgeInsets, NSNotification, NSObject,
     NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, ns_string,
 };
 
 use crate::config::{DragAll, Mode, Options};
 use crate::items::{self, Item};
 use crate::output;
+use crate::uri;
 
 /// Padding between the window edge and the rows.
 const MARGIN: f64 = 8.0;
@@ -287,8 +289,19 @@ fn ns_path(path: &Path) -> Retained<NSString> {
     NSString::from_str(&path.to_string_lossy())
 }
 
+/// Builds a file URL from the raw bytes of `path`. Going through `NSString`
+/// would mangle non-UTF-8 names.
 fn file_url(path: &Path) -> Retained<NSURL> {
-    NSURL::fileURLWithPath(&ns_path(path))
+    let c_path = CString::new(path.as_os_str().as_bytes())
+        .expect("paths from the OS or canonicalize never contain NUL");
+    // SAFETY: `c_path` is a valid NUL-terminated string that outlives the call.
+    unsafe {
+        NSURL::fileURLWithFileSystemRepresentation_isDirectory_relativeToURL(
+            NonNull::from(c_path.as_c_str()).cast(),
+            path.is_dir(),
+            None,
+        )
+    }
 }
 
 /// Loads a thumbnail for images (when enabled) and the Finder icon otherwise.
@@ -660,7 +673,7 @@ define_class!(
         #[unsafe(method(performDragOperation:))]
         fn perform_drag_operation(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool {
             self.set_highlighted(false);
-            let paths = dropped_paths(sender);
+            let paths = paths_from_pasteboard(&sender.draggingPasteboard());
             let accepted = !paths.is_empty();
             if accepted {
                 self.accept(paths);
@@ -711,26 +724,105 @@ impl DropView {
     }
 }
 
-/// Reads the file URLs from a drop and converts them to paths.
-fn dropped_paths(sender: &ProtocolObject<dyn NSDraggingInfo>) -> Vec<PathBuf> {
-    let pasteboard = sender.draggingPasteboard();
-    let classes = NSArray::from_slice(&[NSURL::class()]);
-    let yes = NSNumber::new_bool(true);
-    // SAFETY: the key is a valid static and the value has the documented type.
-    let options: Retained<NSDictionary<_, AnyObject>> = NSDictionary::from_slices(
-        &[unsafe { NSPasteboardURLReadingFileURLsOnlyKey }],
-        &[yes.as_ref()],
-    );
-    // SAFETY: NSURL conforms to NSPasteboardReading.
-    let Some(objects) =
-        (unsafe { pasteboard.readObjectsForClasses_options(&classes, Some(&options)) })
-    else {
+/// Reads the file URLs on `pasteboard` and converts them to paths. Other
+/// content, such as web URLs or text, is ignored.
+///
+/// The URL strings are decoded directly. Going through `NSURL` (`path`,
+/// `fileSystemRepresentation` or `readObjectsForClasses:`) returns names in
+/// decomposed Unicode even when they are stored precomposed on disk, so the
+/// printed path would not match the one the drag source sent.
+fn paths_from_pasteboard(pasteboard: &NSPasteboard) -> Vec<PathBuf> {
+    // SAFETY: AppKit initialises this static before main runs.
+    let file_url_type = unsafe { NSPasteboardTypeFileURL };
+    let Some(items) = pasteboard.pasteboardItems() else {
         return Vec::new();
     };
-    objects
+    items
         .iter()
-        .filter_map(|obj| obj.downcast::<NSURL>().ok())
-        .filter_map(|url| url.path())
-        .map(|path| PathBuf::from(path.to_string()))
+        .filter_map(|item| item.stringForType(file_url_type))
+        .filter_map(|string| uri::file_uri_to_path(&resolve_file_reference(&string)))
         .collect()
+}
+
+/// Finder often provides file reference URLs (`file:///.file/id=...`) that
+/// only the file system can turn into a path. Other URLs are returned as is.
+fn resolve_file_reference(string: &NSString) -> String {
+    NSURL::URLWithString(string)
+        .filter(|url| url.isFileReferenceURL())
+        .and_then(|url| url.filePathURL())
+        .and_then(|url| url.absoluteString())
+        .map_or_else(|| string.to_string(), |resolved| resolved.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use objc2_app_kit::NSPasteboardWriting;
+    use std::fs;
+
+    /// Writes `urls` to a private pasteboard, the way a drag session does, and
+    /// reads them back the way a drop does.
+    fn round_trip(urls: &[Retained<NSURL>]) -> Vec<PathBuf> {
+        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
+        pasteboard.clearContents();
+        let writers: Vec<&ProtocolObject<dyn NSPasteboardWriting>> = urls
+            .iter()
+            .map(|url| ProtocolObject::from_ref(&**url))
+            .collect();
+        assert!(pasteboard.writeObjects(&NSArray::from_slice(&writers)));
+        let paths = paths_from_pasteboard(&pasteboard);
+        // SAFETY: `releaseGlobally` takes no arguments and returns nothing; it is
+        // not exposed by the bindings.
+        let _: () = unsafe { msg_send![&*pasteboard, releaseGlobally] };
+        paths
+    }
+
+    #[test]
+    fn dragged_files_round_trip_through_a_pasteboard() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let paths: Vec<PathBuf> = ["plain.txt", "with space.txt", "ünïcødé ✓.txt", "sub dir"]
+            .iter()
+            .map(|name| root.join(name))
+            .collect();
+        for path in &paths[..3] {
+            fs::write(path, "x").unwrap();
+        }
+        fs::create_dir(&paths[3]).unwrap();
+
+        let urls: Vec<_> = paths.iter().map(|p| file_url(p)).collect();
+        assert_eq!(round_trip(&urls), paths);
+    }
+
+    #[test]
+    fn non_file_urls_are_ignored() {
+        let web = NSURL::URLWithString(ns_string!("https://example.com/file.txt")).unwrap();
+        let file = file_url(Path::new("/tmp"));
+        assert_eq!(round_trip(&[web, file]), [PathBuf::from("/tmp")]);
+    }
+
+    #[test]
+    fn empty_pasteboard_yields_no_paths() {
+        assert!(round_trip(&[]).is_empty());
+    }
+
+    /// Finder puts `file:///.file/id=...` reference URLs on the pasteboard.
+    #[test]
+    fn file_reference_urls_are_resolved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap().join("referenced.txt");
+        fs::write(&path, "x").unwrap();
+        let reference = file_url(&path).fileReferenceURL().unwrap();
+        let string = reference.absoluteString().unwrap();
+        assert!(
+            string.to_string().starts_with("file:///.file/id="),
+            "{string}"
+        );
+
+        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
+        pasteboard.clearContents();
+        // SAFETY: AppKit initialises this static before main runs.
+        assert!(pasteboard.setString_forType(&string, unsafe { NSPasteboardTypeFileURL }));
+        assert_eq!(paths_from_pasteboard(&pasteboard), [path]);
+    }
 }
