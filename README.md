@@ -103,6 +103,22 @@ make install   # release build into ~/.local/bin (override with PREFIX=...)
 make help      # list all targets
 ```
 
+### Release archives
+
+Each archive is built on its own platform and lands in `dist/`:
+
+```sh
+make dist-linux   # on Linux: dnd-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz
+make dist-macos   # on a Mac: dnd-vX.Y.Z-aarch64-apple-darwin.tar.gz
+make checksums    # once both are in dist/: writes SHA256SUMS
+```
+
+The Linux binary links against the system GTK, so it needs GTK 4.8+ and a
+glibc at least as new as the one on the build host (2.34 when built on a
+current distribution) at runtime. The macOS binary is not notarized; after a
+download through a browser, clear the quarantine flag with
+`xattr -d com.apple.quarantine dnd`.
+
 ## Development
 
 ```sh
