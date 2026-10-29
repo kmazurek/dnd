@@ -33,6 +33,14 @@ pub fn label_for(path: &Path, basename: bool) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Returns the label of the row that drags all `count` files at once.
+pub fn all_label(count: usize) -> String {
+    match count {
+        1 => "1 file".to_owned(),
+        n => format!("All {n} files"),
+    }
+}
+
 /// Whether `path` looks like an image a thumbnail can be rendered for,
 /// judging by its extension.
 pub fn is_image(path: &Path) -> bool {
@@ -103,6 +111,12 @@ mod tests {
         assert_eq!(label_for(p, false), "/tmp/some dir/file.txt");
         assert_eq!(label_for(p, true), "file.txt");
         assert_eq!(label_for(Path::new("/"), true), "/");
+    }
+
+    #[test]
+    fn all_label_counts_files() {
+        assert_eq!(all_label(1), "1 file");
+        assert_eq!(all_label(3), "All 3 files");
     }
 
     #[test]

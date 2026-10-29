@@ -124,10 +124,7 @@ fn add_rows(mtm: MainThreadMarker, list: &NSStackView, options: &Rc<Options>) {
     let rows = options.drag_all.rows(items.len());
     if rows.all {
         let paths = items.iter().map(|i| i.path.clone()).collect();
-        let label = match items.len() {
-            1 => "1 file".to_owned(),
-            n => format!("All {n} files"),
-        };
+        let label = items::all_label(items.len());
         add_row(list, ItemView::new(mtm, paths, &label, options.clone()));
     }
     if rows.individual {

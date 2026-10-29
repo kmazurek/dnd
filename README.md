@@ -7,15 +7,17 @@ native window listing files that can be dragged into any application.
 
 It is modelled after [ripdrag](https://github.com/nik012003/ripdrag) and
 [dragon](https://github.com/mwh/dragon) and accepts the same flags for
-dragging files out, but uses the platform's native toolkit instead of GTK.
+dragging files out, but uses each platform's native toolkit: AppKit on macOS
+and GTK 4 on Linux.
 Acting as a drop target (`--target`) is not supported.
 
-| Platform | Status                                  |
-| -------- | --------------------------------------- |
-| macOS    | Supported (AppKit via [objc2])          |
-| Linux    | Planned (GTK 4); builds, exits with an error |
+| Platform | Status                                              |
+| -------- | --------------------------------------------------- |
+| macOS    | Supported (AppKit via [objc2])                      |
+| Linux    | Supported (GTK 4.8+ via [gtk4-rs]), Wayland and X11 |
 
 [objc2]: https://github.com/madsmtm/objc2
+[gtk4-rs]: https://gtk-rs.org/gtk4-rs
 
 ## Usage
 
@@ -29,10 +31,12 @@ fd -e pdf | dnd -I          # read paths from stdin
 With more than one file, the top row ("All N files") drags every file in a
 single drag; the rows below drag them individually.
 
-Close the window with Escape, ⌘W or ⌘Q.
+Close the window with Escape, ⌘W or ⌘Q (Ctrl+W or Ctrl+Q on Linux).
 
-Drags offer *copy* and *link* but never *move*, so dropping onto Finder on the
-same volume copies the file instead of moving it away.
+Drags offer *copy* and *link* but never *move*, so dropping onto Finder (or a
+Linux file manager) on the same volume copies the file instead of moving it
+away. On Linux files are offered as `text/uri-list`, plus the document portal
+formats that let sandboxed (Flatpak) applications receive them.
 
 | Flag | Meaning |
 | ---- | ------- |
@@ -82,6 +86,16 @@ A boolean enabled in the file cannot be switched off from the command line.
 Requires [rustup](https://rustup.rs) and, on macOS, the Xcode command line
 tools. `rust-toolchain.toml` pins the stable toolchain and components.
 
+On Linux, building needs the GTK 4 development files (4.8 or newer) and
+`pkg-config`:
+
+```sh
+sudo apt install libgtk-4-dev pkg-config     # Debian, Ubuntu
+sudo dnf install gtk4-devel pkgconf          # Fedora
+sudo zypper install gtk4-devel pkgconf       # openSUSE
+sudo pacman -S gtk4 pkgconf                  # Arch
+```
+
 ```sh
 make setup     # install toolchain, rustfmt, clippy, rust-analyzer, Linux target
 make build     # debug build
@@ -93,6 +107,7 @@ make help      # list all targets
 
 ```sh
 make ci             # fmt-check, clippy, rust-analyzer, tests, Linux type-check
+                    # (the type-check works without GTK installed)
 make test           # all tests
 make test-headless  # skip GUI smoke tests (e.g. over SSH)
 make run ARGS="-a Cargo.toml src"
@@ -105,6 +120,7 @@ Layout:
 - `src/config_file.rs` – locating and parsing `config.toml`
 - `src/items.rs` – path resolution, labels, stdin parsing
 - `src/platform/macos.rs` – AppKit window and drag source
+- `src/platform/linux.rs` – GTK 4 window and drag source
 - `src/platform/unsupported.rs` – stub for platforms without a backend
 
 Tests:
@@ -118,7 +134,13 @@ Tests:
   to a PNG via the internal `DND_SNAPSHOT=<file.png>` variable, catching
   crashes and layout regressions without user input. These need a logged-in
   GUI session; set `DND_SKIP_GUI_TESTS=1` to skip them.
+- `tests/gui_linux.rs` does the same for the GTK backend, rendering only the
+  window content. The window flashes up briefly for each test. They are
+  skipped when neither `WAYLAND_DISPLAY` nor `DISPLAY` is set, or with
+  `DND_SKIP_GUI_TESTS=1`. A tiling window manager that resizes the window
+  makes the size assertions fail.
 
 The mouse-driven drag itself is not automated: synthesizing input requires
-Accessibility permission. Verify it manually after UI changes, e.g. by
-dragging from `dnd -x Cargo.toml` onto Finder or a text editor.
+Accessibility permission on macOS and is not possible for regular clients on
+Wayland. Verify it manually after UI changes, e.g. by dragging from
+`dnd -x Cargo.toml` onto Finder, a Linux file manager or a text editor.

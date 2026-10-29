@@ -1,4 +1,4 @@
-//! Fallback for platforms without a backend yet (Linux is planned next).
+//! Fallback for platforms without a backend.
 
 use anyhow::{Result, bail};
 

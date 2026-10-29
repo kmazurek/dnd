@@ -64,6 +64,9 @@ objc2-app-kit = { version = "0.3.2", features = [
     "NSWorkspace",
 ] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "0.10.3", package = "gtk4", features = ["v4_8"] }
+
 [dev-dependencies]
 assert_cmd = "2.2"
 predicates = "3.1"

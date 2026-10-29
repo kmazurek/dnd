@@ -52,8 +52,11 @@ ra: ## Run rust-analyzer diagnostics over the project
 check: ## Type-check the crate for the host platform
 	$(CARGO) check --all-targets
 
+# `DOCS_RS` makes the gtk-rs `-sys` build scripts skip looking up the GTK
+# libraries, so this also works on hosts without GTK installed. Nothing is
+# linked, so the libraries are not needed.
 check-linux: ## Type-check the crate for Linux (cross-target, no linking)
-	$(CARGO) check --target $(LINUX_TARGET)
+	DOCS_RS=1 $(CARGO) check --all-targets --target $(LINUX_TARGET)
 
 ci: fmt-check lint ra test check-linux ## Run every verification step
 
