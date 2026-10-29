@@ -34,6 +34,7 @@ fn snapshot(args: &[&str]) -> (u32, u32) {
     let png = dir.path().join("window.png");
     Command::cargo_bin("dnd")
         .unwrap()
+        .env("XDG_CONFIG_HOME", "/nonexistent-dnd-config-home")
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .env("DND_SNAPSHOT", &png)
         .args(args)
@@ -88,6 +89,7 @@ fn snapshot_errors_are_reported() {
     }
     Command::cargo_bin("dnd")
         .unwrap()
+        .env("XDG_CONFIG_HOME", "/nonexistent-dnd-config-home")
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .env("DND_SNAPSHOT", "/nonexistent-dir/window.png")
         .arg("Cargo.toml")

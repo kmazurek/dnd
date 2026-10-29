@@ -50,6 +50,33 @@ same volume copies the file instead of moving it away.
 | `-r`, `--resizable` | Make the window resizable |
 | `-v`, `--verbose` | Print diagnostics to stderr |
 
+## Configuration
+
+Defaults for every option can be set in `$XDG_CONFIG_HOME/dnd/config.toml`,
+falling back to `~/.config/dnd/config.toml` when `XDG_CONFIG_HOME` is unset.
+Without the file the built-in defaults apply. Flags given on the command line
+take precedence over the file.
+
+Keys are named after the long flags; the `-a`/`-A`/`--no-all` flags map to a
+single `drag-all` key. All keys are optional; unknown keys and out-of-range
+values are reported as errors.
+
+```toml
+verbose = false
+and-exit = true
+icons-only = false
+disable-thumbnails = false
+icon-size = 48
+basename = true
+resizable = false
+content-width = 360
+content-height = 360
+drag-all = "auto"   # "auto", "always" (-a), "compact" (-A) or "never" (--no-all)
+from-stdin = false
+```
+
+A boolean enabled in the file cannot be switched off from the command line.
+
 ## Building
 
 Requires [rustup](https://rustup.rs) and, on macOS, the Xcode command line
@@ -75,14 +102,18 @@ Layout:
 
 - `src/cli.rs` – clap argument definitions (ripdrag compatible)
 - `src/config.rs` – validation into the `Options` handed to backends
+- `src/config_file.rs` – locating and parsing `config.toml`
 - `src/items.rs` – path resolution, labels, stdin parsing
 - `src/platform/macos.rs` – AppKit window and drag source
 - `src/platform/unsupported.rs` – stub for platforms without a backend
 
 Tests:
 
-- Unit tests cover argument parsing, validation and path handling.
-- `tests/cli.rs` runs the binary for help, version and error cases.
+- Unit tests cover argument parsing, config file parsing and precedence,
+  validation and path handling.
+- `tests/cli.rs` runs the binary for help, version, error and config file
+  cases. Integration tests point `XDG_CONFIG_HOME` elsewhere so a personal
+  config file cannot affect them.
 - `tests/gui_macos.rs` builds the real window for each mode and renders it
   to a PNG via the internal `DND_SNAPSHOT=<file.png>` variable, catching
   crashes and layout regressions without user input. These need a logged-in

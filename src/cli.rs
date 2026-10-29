@@ -4,13 +4,25 @@
 //! (itself modelled after `dragon`) so that existing muscle memory and scripts
 //! keep working.
 
+use std::ops::{RangeFrom, RangeInclusive};
 use std::path::PathBuf;
 
 use clap::Parser;
 
+/// Accepted values for `--icon-size`, also enforced for the config file.
+pub const ICON_SIZES: RangeInclusive<i64> = 16..=512;
+/// Accepted values for `--content-width`.
+pub const CONTENT_WIDTHS: RangeFrom<i64> = 100..;
+/// Accepted values for `--content-height`.
+pub const CONTENT_HEIGHTS: RangeFrom<i64> = 60..;
+
 /// Drag files from the terminal into other applications.
 ///
 /// A small window lists the given files; drag them into any application.
+///
+/// Defaults for every option can be set in `$XDG_CONFIG_HOME/dnd/config.toml`
+/// (usually `~/.config/dnd/config.toml`); flags given on the command line take
+/// precedence.
 #[derive(Debug, Clone, Parser)]
 #[command(version, about, long_about)]
 pub struct Cli {
@@ -34,10 +46,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub disable_thumbnails: bool,
 
-    /// Size of icons and thumbnails, in points
-    #[arg(short = 's', long, default_value_t = 32,
-          value_parser = clap::value_parser!(u16).range(16..=512))]
-    pub icon_size: u16,
+    /// Size of icons and thumbnails, in points [default: 32]
+    #[arg(short = 's', long, value_parser = clap::value_parser!(u16).range(ICON_SIZES))]
+    pub icon_size: Option<u16>,
 
     /// Show only the file name instead of the full path
     #[arg(short, long)]
@@ -47,15 +58,13 @@ pub struct Cli {
     #[arg(short, long)]
     pub resizable: bool,
 
-    /// Width of the window content, in points
-    #[arg(short = 'W', long, default_value_t = 360,
-          value_parser = clap::value_parser!(u16).range(100..))]
-    pub content_width: u16,
+    /// Width of the window content, in points [default: 360]
+    #[arg(short = 'W', long, value_parser = clap::value_parser!(u16).range(CONTENT_WIDTHS))]
+    pub content_width: Option<u16>,
 
-    /// Height of the window content, in points
-    #[arg(short = 'H', long, default_value_t = 360,
-          value_parser = clap::value_parser!(u16).range(60..))]
-    pub content_height: u16,
+    /// Height of the window content, in points [default: 360]
+    #[arg(short = 'H', long, value_parser = clap::value_parser!(u16).range(CONTENT_HEIGHTS))]
+    pub content_height: Option<u16>,
 
     /// Show the "drag all" row even for a single file. With more than one
     /// file it is shown by default
@@ -94,8 +103,9 @@ mod tests {
         let cli = parse(&["a.txt", "b.txt"]).unwrap();
         assert_eq!(cli.paths, [PathBuf::from("a.txt"), PathBuf::from("b.txt")]);
         assert!(!cli.and_exit);
-        assert_eq!(cli.icon_size, 32);
-        assert_eq!((cli.content_width, cli.content_height), (360, 360));
+        // Left unset so that the config file can provide them.
+        assert_eq!(cli.icon_size, None);
+        assert_eq!((cli.content_width, cli.content_height), (None, None));
     }
 
     #[test]
@@ -107,8 +117,11 @@ mod tests {
         .unwrap();
         assert!(cli.verbose && cli.and_exit && cli.icons_only && cli.disable_thumbnails);
         assert!(cli.basename && cli.resizable && cli.all && cli.from_stdin);
-        assert_eq!(cli.icon_size, 64);
-        assert_eq!((cli.content_width, cli.content_height), (200, 100));
+        assert_eq!(cli.icon_size, Some(64));
+        assert_eq!(
+            (cli.content_width, cli.content_height),
+            (Some(200), Some(100))
+        );
     }
 
     #[test]
