@@ -2,13 +2,17 @@
 # Run `make help` to list the available targets.
 
 CARGO      ?= cargo
+RUSTC      ?= rustc
 BIN        := dnd
 PREFIX     ?= $(HOME)/.local
 LINUX_TARGET ?= x86_64-unknown-linux-gnu
+MACOS_TARGET ?= aarch64-apple-darwin
+VERSION    := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+DIST       := dist
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup build release run test test-headless fmt fmt-check lint ra check check-linux ci install uninstall clean
+.PHONY: help setup build release run test test-headless fmt fmt-check lint ra check check-linux ci dist-linux dist-macos checksums install uninstall clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -16,7 +20,7 @@ help: ## Show this help
 setup: ## Install the Rust toolchain and components via rustup
 	rustup toolchain install stable --profile minimal
 	rustup component add rustfmt clippy rust-analyzer rust-src
-	rustup target add $(LINUX_TARGET)
+	rustup target add $(LINUX_TARGET) $(MACOS_TARGET)
 
 build: ## Build a debug binary
 	$(CARGO) build
@@ -60,6 +64,36 @@ check-linux: ## Type-check the crate for Linux (cross-target, no linking)
 
 ci: fmt-check lint ra test check-linux ## Run every verification step
 
+# $(call package,TARGET): bundles the release binary for TARGET with the README
+# into $(DIST)/dnd-vVERSION-TARGET.tar.gz.
+define package
+rm -rf $(DIST)/$(BIN)-v$(VERSION)-$(1)
+install -d $(DIST)/$(BIN)-v$(VERSION)-$(1)
+install -m 755 target/$(1)/release/$(BIN) $(DIST)/$(BIN)-v$(VERSION)-$(1)/
+cp README.md $(DIST)/$(BIN)-v$(VERSION)-$(1)/
+tar -C $(DIST) -czf $(DIST)/$(BIN)-v$(VERSION)-$(1).tar.gz $(BIN)-v$(VERSION)-$(1)
+rm -rf $(DIST)/$(BIN)-v$(VERSION)-$(1)
+endef
+
+# Each archive is built on its own platform: the Linux one links against the
+# system GTK and the macOS one against the macOS SDK. Collect both archives in
+# $(DIST) and run `make checksums` before uploading them to a GitHub release.
+dist-linux: ## Build the x86_64 Linux release archive (on Linux)
+	$(CARGO) build --release --target $(LINUX_TARGET)
+	$(call package,$(LINUX_TARGET))
+
+# On an Intel Mac this cross-compiles; Apple's toolchain links either
+# architecture without extra setup.
+dist-macos: ## Build the Apple Silicon release archive (on macOS)
+	@test -d "$$($(RUSTC) --print sysroot)/lib/rustlib/$(MACOS_TARGET)" || \
+		{ echo "the Rust standard library for $(MACOS_TARGET) is missing: rustup target add $(MACOS_TARGET)"; exit 1; }
+	$(CARGO) build --release --target $(MACOS_TARGET)
+	$(call package,$(MACOS_TARGET))
+
+checksums: ## Write SHA256SUMS for the release archives in dist/
+	cd $(DIST) && shasum -a 256 *.tar.gz > SHA256SUMS
+	@cat $(DIST)/SHA256SUMS
+
 install: release ## Install the binary into $(PREFIX)/bin
 	install -d $(PREFIX)/bin
 	install -m 755 target/release/$(BIN) $(PREFIX)/bin/$(BIN)
@@ -67,5 +101,6 @@ install: release ## Install the binary into $(PREFIX)/bin
 uninstall: ## Remove the installed binary
 	rm -f $(PREFIX)/bin/$(BIN)
 
-clean: ## Remove build artifacts
+clean: ## Remove build artifacts and release archives
 	$(CARGO) clean
+	rm -rf $(DIST)
