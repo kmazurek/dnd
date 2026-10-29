@@ -8,18 +8,6 @@ use anyhow::{Result, bail};
 use crate::cli::Cli;
 use crate::items::{self, Item};
 
-/// What the window does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    /// Files are dragged out of the window.
-    Source,
-    /// Files are dropped into the window and printed to stdout.
-    Target {
-        /// Keep dropped files around as draggable items.
-        keep: bool,
-    },
-}
-
 /// When the "drag everything at once" row is shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragAll {
@@ -41,15 +29,8 @@ pub struct Rows {
 }
 
 impl DragAll {
-    /// Decides the rows for `count` files. Kept drops change the count at
-    /// runtime, so backends call this again whenever the list changes.
+    /// Decides the rows for `count` files.
     pub fn rows(self, count: usize) -> Rows {
-        if count == 0 {
-            return Rows {
-                all: false,
-                individual: false,
-            };
-        }
         match self {
             DragAll::Auto => Rows {
                 all: count > 1,
@@ -73,14 +54,12 @@ impl DragAll {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
-    pub mode: Mode,
     pub items: Vec<Item>,
     pub verbose: bool,
     pub and_exit: bool,
     pub icons_only: bool,
     pub thumbnails: bool,
     pub icon_size: f64,
-    pub basename: bool,
     pub resizable: bool,
     pub width: f64,
     pub height: f64,
@@ -97,19 +76,8 @@ impl Options {
             paths.extend(items::read_paths(stdin)?);
         }
 
-        let mode = if cli.target {
-            Mode::Target { keep: cli.keep }
-        } else {
-            Mode::Source
-        };
-        match mode {
-            Mode::Source if paths.is_empty() => {
-                bail!("no files to drag: pass some paths, use --from-stdin or --target")
-            }
-            Mode::Target { keep: false } if !paths.is_empty() => {
-                bail!("paths can only be shown in target mode together with --keep")
-            }
-            _ => {}
+        if paths.is_empty() {
+            bail!("no files to drag: pass some paths or use --from-stdin");
         }
 
         let drag_all = if cli.all_compact {
@@ -123,14 +91,12 @@ impl Options {
         };
 
         Ok(Self {
-            mode,
             items: items::resolve(&paths, cwd, cli.basename)?,
             verbose: cli.verbose,
             and_exit: cli.and_exit,
             icons_only: cli.icons_only,
             thumbnails: !cli.disable_thumbnails,
             icon_size: f64::from(cli.icon_size),
-            basename: cli.basename,
             resizable: cli.resizable,
             width: f64::from(cli.content_width),
             height: f64::from(cli.content_height),
@@ -161,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn source_mode_requires_paths() {
+    fn paths_are_required() {
         let (_dir, root) = fixture();
         let err = options(&[], "", &root).unwrap_err().to_string();
         assert!(err.contains("no files to drag"), "{err}");
@@ -179,20 +145,6 @@ mod tests {
     }
 
     #[test]
-    fn target_mode() {
-        let (_dir, root) = fixture();
-        let opts = options(&["-t"], "", &root).unwrap();
-        assert_eq!(opts.mode, Mode::Target { keep: false });
-        assert!(opts.items.is_empty());
-
-        assert!(options(&["-t", "a"], "", &root).is_err());
-
-        let opts = options(&["-t", "-k", "a"], "", &root).unwrap();
-        assert_eq!(opts.mode, Mode::Target { keep: true });
-        assert_eq!(opts.items.len(), 1);
-    }
-
-    #[test]
     fn drag_all_variants() {
         let (_dir, root) = fixture();
         let drag_all = |args: &[&str]| options(args, "", &root).unwrap().drag_all;
@@ -205,15 +157,6 @@ mod tests {
     #[test]
     fn drag_all_rows_by_count() {
         let rows = |all, individual| Rows { all, individual };
-        let none = rows(false, false);
-        for mode in [
-            DragAll::Auto,
-            DragAll::Always,
-            DragAll::Compact,
-            DragAll::Never,
-        ] {
-            assert_eq!(mode.rows(0), none, "{mode:?}");
-        }
         // The default only adds the "all" row once it drags more than one row would.
         assert_eq!(DragAll::Auto.rows(1), rows(false, true));
         assert_eq!(DragAll::Auto.rows(2), rows(true, true));

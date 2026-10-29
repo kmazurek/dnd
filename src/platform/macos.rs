@@ -2,10 +2,9 @@
 //!
 //! The window is an `NSScrollView` holding a vertical `NSStackView` of
 //! [`ItemView`] rows. Each row is its own `NSDraggingSource` and starts a
-//! drag session with file URLs on the pasteboard. In target mode the window's
-//! content view is a [`DropView`] registered for file URLs.
+//! drag session with file URLs on the pasteboard.
 
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::Cell;
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -19,27 +18,21 @@ use objc2::{AnyThread, DefinedClass, MainThreadOnly, Message, define_class, msg_
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
     NSBezierPath, NSBitmapImageFileType, NSColor, NSDragOperation, NSDraggingContext,
-    NSDraggingDestination, NSDraggingInfo, NSDraggingItem, NSDraggingSession, NSDraggingSource,
-    NSEvent, NSEventModifierFlags, NSImage, NSImageScaling, NSImageView, NSLayoutAttribute,
-    NSLayoutConstraint, NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem,
-    NSPasteboard, NSPasteboardTypeFileURL, NSScrollView, NSStackView, NSTextField, NSView,
-    NSWindow, NSWindowStyleMask, NSWorkspace,
+    NSDraggingItem, NSDraggingSession, NSDraggingSource, NSEvent, NSEventModifierFlags, NSImage,
+    NSImageScaling, NSImageView, NSLayoutAttribute, NSLayoutConstraint,
+    NSLayoutConstraintOrientation, NSLineBreakMode, NSMenu, NSMenuItem, NSScrollView, NSStackView,
+    NSTextField, NSView, NSWindow, NSWindowStyleMask, NSWorkspace,
 };
 use objc2_foundation::{
     MainThreadMarker, NSArray, NSDictionary, NSEdgeInsets, NSNotification, NSObject,
     NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, ns_string,
 };
 
-use crate::config::{Mode, Options};
-use crate::items::{self, Item};
-use crate::output;
-use crate::uri;
+use crate::config::Options;
+use crate::items;
 
 /// Padding between the window edge and the rows.
 const MARGIN: f64 = 8.0;
-
-/// Height reserved above the list for the "Drop files here" hint.
-const HINT_HEIGHT: f64 = MARGIN * 2.0 + 16.0;
 
 /// When set, the window is rendered to this PNG file instead of being shown,
 /// and the program exits. Used by the GUI smoke tests; not a public interface.
@@ -118,58 +111,16 @@ fn build_window(mtm: MainThreadMarker, options: &Rc<Options>) -> Retained<NSWind
     window.setTitle(ns_string!("dnd"));
 
     let list = item_list(mtm);
-    let scroll = scroll_view(mtm, &list);
+    window.setContentView(Some(&scroll_view(mtm, &list)));
 
-    let content: Retained<NSView> = match options.mode {
-        Mode::Source => {
-            let root = NSView::initWithFrame(NSView::alloc(mtm), frame);
-            root.addSubview(&scroll);
-            pin(&scroll, &root, 0.0, 0.0);
-            root
-        }
-        Mode::Target { keep } => {
-            let root = DropView::new(mtm, frame, options.clone());
-            let hint = NSTextField::labelWithString(ns_string!("Drop files here"), mtm);
-            hint.setTextColor(Some(&NSColor::secondaryLabelColor()));
-            hint.setTranslatesAutoresizingMaskIntoConstraints(false);
-            root.addSubview(&hint);
-            let center_x = hint
-                .centerXAnchor()
-                .constraintEqualToAnchor(&root.centerXAnchor());
-            if keep {
-                root.addSubview(&scroll);
-                pin(&scroll, &root, HINT_HEIGHT, 0.0);
-                activate(&[
-                    center_x,
-                    hint.topAnchor()
-                        .constraintEqualToAnchor_constant(&root.topAnchor(), MARGIN),
-                ]);
-                root.ivars().list.set(list.clone()).ok();
-            } else {
-                activate(&[
-                    center_x,
-                    hint.centerYAnchor()
-                        .constraintEqualToAnchor(&root.centerYAnchor()),
-                ]);
-            }
-            // SAFETY: AppKit initialises this static before main runs.
-            let file_url_type = unsafe { NSPasteboardTypeFileURL };
-            root.registerForDraggedTypes(&NSArray::from_slice(&[file_url_type]));
-            Retained::into_super(root)
-        }
-    };
-    window.setContentView(Some(&content));
-
-    show_items(mtm, &list, &options.items, options);
+    add_rows(mtm, &list, options);
     window
 }
 
-/// Replaces the rows in `list` with rows for `items`: a "drag all" row
-/// and/or one row per file, as decided by [`crate::config::DragAll::rows`].
-fn show_items(mtm: MainThreadMarker, list: &NSStackView, items: &[Item], options: &Rc<Options>) {
-    for row in list.arrangedSubviews().iter() {
-        row.removeFromSuperview();
-    }
+/// Fills `list` with a "drag all" row and/or one row per file, as decided by
+/// [`crate::config::DragAll::rows`].
+fn add_rows(mtm: MainThreadMarker, list: &NSStackView, options: &Rc<Options>) {
+    let items = &options.items;
     let rows = options.drag_all.rows(items.len());
     if rows.all {
         let paths = items.iter().map(|i| i.path.clone()).collect();
@@ -214,7 +165,6 @@ fn scroll_view(mtm: MainThreadMarker, list: &NSStackView) -> Retained<NSScrollVi
     scroll.setHasVerticalScroller(true);
     scroll.setAutohidesScrollers(true);
     scroll.setDrawsBackground(false);
-    scroll.setTranslatesAutoresizingMaskIntoConstraints(false);
     scroll.setDocumentView(Some(list));
 
     let clip = scroll.contentView();
@@ -228,17 +178,17 @@ fn scroll_view(mtm: MainThreadMarker, list: &NSStackView) -> Retained<NSScrollVi
     scroll
 }
 
-/// Pins `view` to the edges of `parent`, leaving `top` and `bottom` points.
-fn pin(view: &NSView, parent: &NSView, top: f64, bottom: f64) {
+/// Pins `view` to the edges of `parent`.
+fn pin(view: &NSView, parent: &NSView) {
     activate(&[
         view.leadingAnchor()
             .constraintEqualToAnchor(&parent.leadingAnchor()),
         view.trailingAnchor()
             .constraintEqualToAnchor(&parent.trailingAnchor()),
         view.topAnchor()
-            .constraintEqualToAnchor_constant(&parent.topAnchor(), top),
+            .constraintEqualToAnchor(&parent.topAnchor()),
         view.bottomAnchor()
-            .constraintEqualToAnchor_constant(&parent.bottomAnchor(), -bottom),
+            .constraintEqualToAnchor(&parent.bottomAnchor()),
     ]);
 }
 
@@ -555,7 +505,7 @@ impl ItemView {
         });
         row.setTranslatesAutoresizingMaskIntoConstraints(false);
         this.addSubview(&row);
-        pin(&row, &this, 0.0, 0.0);
+        pin(&row, &this);
         this
     }
 
@@ -597,219 +547,5 @@ impl ItemView {
             event,
             ProtocolObject::from_ref(self),
         );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Drop target
-// ---------------------------------------------------------------------------
-
-struct DropIvars {
-    options: Rc<Options>,
-    /// The list kept dropped files are appended to (only with `--keep`).
-    list: OnceCell<Retained<NSStackView>>,
-    highlighted: Cell<bool>,
-    /// Files shown in the list: the initial ones plus every distinct drop.
-    kept: RefCell<Vec<Item>>,
-}
-
-define_class!(
-    // SAFETY: NSView has no subclassing requirements and we do not implement
-    // Drop.
-    #[unsafe(super(NSView))]
-    #[thread_kind = MainThreadOnly]
-    #[name = "DndDropView"]
-    #[ivars = DropIvars]
-    struct DropView;
-
-    impl DropView {
-        #[unsafe(method(drawRect:))]
-        fn draw_rect(&self, _dirty: NSRect) {
-            if !self.ivars().highlighted.get() {
-                return;
-            }
-            let b = self.bounds();
-            let inset = NSRect::new(
-                NSPoint::new(b.origin.x + 3.0, b.origin.y + 3.0),
-                NSSize::new(b.size.width - 6.0, b.size.height - 6.0),
-            );
-            let path = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(inset, 8.0, 8.0);
-            path.setLineWidth(3.0);
-            NSColor::controlAccentColor().setStroke();
-            path.stroke();
-        }
-    }
-
-    unsafe impl NSObjectProtocol for DropView {}
-
-    unsafe impl NSDraggingDestination for DropView {
-        #[unsafe(method(draggingEntered:))]
-        fn dragging_entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
-            // Ignore our own rows being dragged around inside the window.
-            if sender.draggingSource().is_some() {
-                return NSDragOperation::None;
-            }
-            self.set_highlighted(true);
-            NSDragOperation::Copy
-        }
-
-        #[unsafe(method(draggingExited:))]
-        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) {
-            self.set_highlighted(false);
-        }
-
-        #[unsafe(method(performDragOperation:))]
-        fn perform_drag_operation(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> bool {
-            self.set_highlighted(false);
-            let paths = paths_from_pasteboard(&sender.draggingPasteboard());
-            let accepted = !paths.is_empty();
-            if accepted {
-                self.accept(paths);
-            }
-            accepted
-        }
-    }
-);
-
-impl DropView {
-    fn new(mtm: MainThreadMarker, frame: NSRect, options: Rc<Options>) -> Retained<Self> {
-        let kept = options.items.clone();
-        let this = Self::alloc(mtm).set_ivars(DropIvars {
-            options,
-            list: OnceCell::new(),
-            highlighted: Cell::new(false),
-            kept: RefCell::new(kept),
-        });
-        // SAFETY: NSView's designated initializer has this signature.
-        unsafe { msg_send![super(this), initWithFrame: frame] }
-    }
-
-    fn set_highlighted(&self, highlighted: bool) {
-        self.ivars().highlighted.set(highlighted);
-        self.setNeedsDisplay(true);
-    }
-
-    fn accept(&self, paths: Vec<PathBuf>) {
-        let ivars = self.ivars();
-        output::print_paths(paths.iter().map(PathBuf::as_path));
-
-        if let Some(list) = ivars.list.get() {
-            let mut kept = ivars.kept.borrow_mut();
-            for path in paths {
-                if !kept.iter().any(|item| item.path == path) {
-                    kept.push(Item::new(path, ivars.options.basename));
-                }
-            }
-            // Rebuild rather than append, so the "drag all" row appears once
-            // there is more than one file and always covers all of them.
-            show_items(self.mtm(), list, &kept, &ivars.options);
-        }
-
-        if ivars.options.and_exit {
-            quit(self.mtm());
-        }
-    }
-}
-
-/// Reads the file URLs on `pasteboard` and converts them to paths. Other
-/// content, such as web URLs or text, is ignored.
-///
-/// The URL strings are decoded directly. Going through `NSURL` (`path`,
-/// `fileSystemRepresentation` or `readObjectsForClasses:`) returns names in
-/// decomposed Unicode even when they are stored precomposed on disk, so the
-/// printed path would not match the one the drag source sent.
-fn paths_from_pasteboard(pasteboard: &NSPasteboard) -> Vec<PathBuf> {
-    // SAFETY: AppKit initialises this static before main runs.
-    let file_url_type = unsafe { NSPasteboardTypeFileURL };
-    let Some(items) = pasteboard.pasteboardItems() else {
-        return Vec::new();
-    };
-    items
-        .iter()
-        .filter_map(|item| item.stringForType(file_url_type))
-        .filter_map(|string| uri::file_uri_to_path(&resolve_file_reference(&string)))
-        .collect()
-}
-
-/// Finder often provides file reference URLs (`file:///.file/id=...`) that
-/// only the file system can turn into a path. Other URLs are returned as is.
-fn resolve_file_reference(string: &NSString) -> String {
-    NSURL::URLWithString(string)
-        .filter(|url| url.isFileReferenceURL())
-        .and_then(|url| url.filePathURL())
-        .and_then(|url| url.absoluteString())
-        .map_or_else(|| string.to_string(), |resolved| resolved.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use objc2_app_kit::NSPasteboardWriting;
-    use std::fs;
-
-    /// Writes `urls` to a private pasteboard, the way a drag session does, and
-    /// reads them back the way a drop does.
-    fn round_trip(urls: &[Retained<NSURL>]) -> Vec<PathBuf> {
-        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
-        pasteboard.clearContents();
-        let writers: Vec<&ProtocolObject<dyn NSPasteboardWriting>> = urls
-            .iter()
-            .map(|url| ProtocolObject::from_ref(&**url))
-            .collect();
-        assert!(pasteboard.writeObjects(&NSArray::from_slice(&writers)));
-        let paths = paths_from_pasteboard(&pasteboard);
-        // SAFETY: `releaseGlobally` takes no arguments and returns nothing; it is
-        // not exposed by the bindings.
-        let _: () = unsafe { msg_send![&*pasteboard, releaseGlobally] };
-        paths
-    }
-
-    #[test]
-    fn dragged_files_round_trip_through_a_pasteboard() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().canonicalize().unwrap();
-        let paths: Vec<PathBuf> = ["plain.txt", "with space.txt", "ünïcødé ✓.txt", "sub dir"]
-            .iter()
-            .map(|name| root.join(name))
-            .collect();
-        for path in &paths[..3] {
-            fs::write(path, "x").unwrap();
-        }
-        fs::create_dir(&paths[3]).unwrap();
-
-        let urls: Vec<_> = paths.iter().map(|p| file_url(p)).collect();
-        assert_eq!(round_trip(&urls), paths);
-    }
-
-    #[test]
-    fn non_file_urls_are_ignored() {
-        let web = NSURL::URLWithString(ns_string!("https://example.com/file.txt")).unwrap();
-        let file = file_url(Path::new("/tmp"));
-        assert_eq!(round_trip(&[web, file]), [PathBuf::from("/tmp")]);
-    }
-
-    #[test]
-    fn empty_pasteboard_yields_no_paths() {
-        assert!(round_trip(&[]).is_empty());
-    }
-
-    /// Finder puts `file:///.file/id=...` reference URLs on the pasteboard.
-    #[test]
-    fn file_reference_urls_are_resolved() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().canonicalize().unwrap().join("referenced.txt");
-        fs::write(&path, "x").unwrap();
-        let reference = file_url(&path).fileReferenceURL().unwrap();
-        let string = reference.absoluteString().unwrap();
-        assert!(
-            string.to_string().starts_with("file:///.file/id="),
-            "{string}"
-        );
-
-        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
-        pasteboard.clearContents();
-        // SAFETY: AppKit initialises this static before main runs.
-        assert!(pasteboard.setString_forType(&string, unsafe { NSPasteboardTypeFileURL }));
-        assert_eq!(paths_from_pasteboard(&pasteboard), [path]);
     }
 }

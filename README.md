@@ -2,13 +2,13 @@
 
 A vibe-coded CLI utility for drag and drop.
 
-Drag and drop files from and to the terminal. `dnd` opens a small native
-window listing files that can be dragged into any application, or acting as a
-drop target that prints the dropped paths to stdout.
+Drag files from the terminal into other applications. `dnd` opens a small
+native window listing files that can be dragged into any application.
 
 It is modelled after [ripdrag](https://github.com/nik012003/ripdrag) and
-[dragon](https://github.com/mwh/dragon) and accepts the same flags, but uses
-the platform's native toolkit instead of GTK.
+[dragon](https://github.com/mwh/dragon) and accepts the same flags for
+dragging files out, but uses the platform's native toolkit instead of GTK.
+Acting as a drop target (`--target`) is not supported.
 
 | Platform | Status                                  |
 | -------- | --------------------------------------- |
@@ -24,14 +24,10 @@ dnd FILE...                 # drag files out, one by one or all at once
 dnd -x *.png                # ...and quit after the first successful drag
 dnd -A -x ~/Downloads/*.pdf # a single row that drags every file
 fd -e pdf | dnd -I          # read paths from stdin
-dnd -t                      # drop target: print dropped paths to stdout
-dnd -t -x | xargs -I{} cp {} .   # copy one dropped file here
-dnd -t -k                   # drop target that keeps drops as draggable rows
 ```
 
 With more than one file, the top row ("All N files") drags every file in a
-single drag; the rows below drag them individually. In `-t -k` mode the row
-appears as soon as two files have been dropped.
+single drag; the rows below drag them individually.
 
 Close the window with Escape, ⌘W or ⌘Q.
 
@@ -40,9 +36,7 @@ same volume copies the file instead of moving it away.
 
 | Flag | Meaning |
 | ---- | ------- |
-| `-t`, `--target` | Act as a drop target and print dropped paths |
-| `-k`, `--keep` | With `-t`, keep dropped files as draggable rows |
-| `-x`, `--and-exit` | Exit after the first successful drag or drop |
+| `-x`, `--and-exit` | Exit after the first successful drag |
 | `-a`, `--all` | Show the "drag all" row even for a single file |
 | `-A`, `--all-compact` | Show only the "drag all" row |
 | `--no-all` | Never show the "drag all" row |
@@ -82,17 +76,12 @@ Layout:
 - `src/cli.rs` – clap argument definitions (ripdrag compatible)
 - `src/config.rs` – validation into the `Options` handed to backends
 - `src/items.rs` – path resolution, labels, stdin parsing
-- `src/uri.rs` – byte-exact `file://` URI ↔ path conversion
-- `src/output.rs` – printing dropped paths
-- `src/platform/macos.rs` – AppKit window, drag source and drop target
+- `src/platform/macos.rs` – AppKit window and drag source
 - `src/platform/unsupported.rs` – stub for platforms without a backend
 
 Tests:
 
-- Unit tests cover argument parsing, validation, path handling and URI
-  decoding. On macOS they also round-trip file URLs through a private
-  `NSPasteboard`, exercising the exact data path used by drags and drops,
-  including Finder's file reference URLs and non-ASCII names.
+- Unit tests cover argument parsing, validation and path handling.
 - `tests/cli.rs` runs the binary for help, version and error cases.
 - `tests/gui_macos.rs` builds the real window for each mode and renders it
   to a PNG via the internal `DND_SNAPSHOT=<file.png>` variable, catching
@@ -100,5 +89,5 @@ Tests:
   GUI session; set `DND_SKIP_GUI_TESTS=1` to skip them.
 
 The mouse-driven drag itself is not automated: synthesizing input requires
-Accessibility permission. Verify it manually after UI changes, e.g. with
-`dnd -t` in one terminal and `dnd -x Cargo.toml` in another.
+Accessibility permission. Verify it manually after UI changes, e.g. by
+dragging from `dnd -x Cargo.toml` onto Finder or a text editor.

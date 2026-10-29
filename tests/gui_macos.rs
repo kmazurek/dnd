@@ -82,15 +82,6 @@ fn source_window_variants_render() {
 }
 
 #[test]
-fn target_windows_render() {
-    if skip() {
-        return;
-    }
-    assert_window_size(snapshot(&["-t", "-W", "250", "-H", "100"]), 250, 100);
-    assert_window_size(snapshot(&["-t", "-k", "-a", "Cargo.toml", "src"]), 360, 360);
-}
-
-#[test]
 fn snapshot_errors_are_reported() {
     if skip() {
         return;

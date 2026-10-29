@@ -15,8 +15,6 @@ fn help_lists_ripdrag_compatible_flags() {
     let assert = dnd().arg("--help").assert().success();
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     for flag in [
-        "--target",
-        "--keep",
         "--and-exit",
         "--icons-only",
         "--disable-thumbnails",
@@ -75,23 +73,4 @@ fn missing_files_from_stdin_are_reported() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("from-stdin.txt"));
-}
-
-#[test]
-fn keep_without_target_is_rejected() {
-    dnd()
-        .args(["-k"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--target"));
-}
-
-#[test]
-fn paths_in_plain_target_mode_are_rejected() {
-    dnd()
-        .args(["-t", "Cargo.toml"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--keep"));
 }

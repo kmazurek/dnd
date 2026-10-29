@@ -8,11 +8,9 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-/// Drag and drop files from and to the terminal.
+/// Drag files from the terminal into other applications.
 ///
-/// In the default (source) mode a small window lists the given files; drag
-/// them into any application. With `--target` the window instead accepts
-/// drops and prints the dropped paths to stdout, one per line.
+/// A small window lists the given files; drag them into any application.
 #[derive(Debug, Clone, Parser)]
 #[command(version, about, long_about)]
 pub struct Cli {
@@ -24,15 +22,7 @@ pub struct Cli {
     #[arg(short, long)]
     pub verbose: bool,
 
-    /// Act as a drop target and print dropped paths to stdout
-    #[arg(short, long)]
-    pub target: bool,
-
-    /// In target mode, keep dropped files around so they can be dragged again
-    #[arg(short, long, requires = "target")]
-    pub keep: bool,
-
-    /// Exit after the first successful drag or drop
+    /// Exit after the first successful drag
     #[arg(short = 'x', long)]
     pub and_exit: bool,
 
@@ -103,7 +93,7 @@ mod tests {
     fn defaults() {
         let cli = parse(&["a.txt", "b.txt"]).unwrap();
         assert_eq!(cli.paths, [PathBuf::from("a.txt"), PathBuf::from("b.txt")]);
-        assert!(!cli.target && !cli.keep && !cli.and_exit);
+        assert!(!cli.and_exit);
         assert_eq!(cli.icon_size, 32);
         assert_eq!((cli.content_width, cli.content_height), (360, 360));
     }
@@ -119,13 +109,6 @@ mod tests {
         assert!(cli.basename && cli.resizable && cli.all && cli.from_stdin);
         assert_eq!(cli.icon_size, 64);
         assert_eq!((cli.content_width, cli.content_height), (200, 100));
-    }
-
-    #[test]
-    fn keep_requires_target() {
-        assert!(parse(&["-k"]).is_err());
-        let cli = parse(&["-t", "-k"]).unwrap();
-        assert!(cli.target && cli.keep);
     }
 
     #[test]
